@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  /* Enforced Dark Mode - Deep Slate */
+  --bg-color: #0f172a;
+  /* Slate-900 */
+  --panel-color: #1e293b;
+  /* Slate-800 */
+  --text-color: #f1f5f9;
+  /* Slate-100 */
+  --text-muted: #94a3b8;
+  /* Slate-400 */
+  --border-color: #334155;
+  /* Slate-700 */
+  --accent-color: #60a5fa;
+  /* Blue-400 */
+  --accent-hover: #3b82f6;
+  /* Blue-500 */
+  --canvas-bg: #1e293b;
+  /* Slate-800 */
+  --canvas-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.panel {
+  background-color: var(--panel-color);
+  border: 1px solid var(--border-color);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
