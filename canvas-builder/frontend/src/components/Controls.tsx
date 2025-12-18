@@ -72,7 +72,7 @@ export default function Controls({
 
 // ... (inside component)
 
-  const inputClass = "w-full p-2 mb-2 border rounded text-sm bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-600 text-[var(--text-color)] focus:ring-2 focus:ring-blue-500 outline-none transition-colors";
+  const inputClass = "w-full p-2 mb-2 border rounded text-sm bg-slate-800 border-slate-600 text-[var(--text-color)] focus:ring-2 focus:ring-blue-500 outline-none transition-colors";
   const labelClass = "block text-xs font-semibold mb-1 text-[var(--text-color)] uppercase tracking-wide opacity-70";
   
   const tools: { id: Tool; label: string; icon: React.ReactNode }[] = [
@@ -102,14 +102,14 @@ export default function Controls({
             </div>
         </div>
                <div className="flex gap-2 mb-3">
-            <button onClick={onUndo} disabled={!canUndo} className="flex-1 flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-[var(--text-color)]" title="Undo">
+            <button onClick={onUndo} disabled={!canUndo} className="flex-1 flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-[var(--text-color)]" title="Undo">
                 <Undo2 size={16} /> <span className="hidden sm:inline">Undo</span>
             </button>
-            <button onClick={onRedo} disabled={!canRedo} className="flex-1 flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-[var(--text-color)]" title="Redo">
+            <button onClick={onRedo} disabled={!canRedo} className="flex-1 flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-[var(--text-color)]" title="Redo">
                 <span className="hidden sm:inline">Redo</span> <Redo2 size={16} />
             </button>
         </div>
-        <button onClick={onClear} className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-sm font-medium border border-red-200 dark:border-red-900/30">
+        <button onClick={onClear} className="w-full bg-red-900/20 text-red-400 p-2 rounded-lg hover:bg-red-900/40 transition-colors text-sm font-medium border border-red-900/30">
             Clear Canvas
         </button>
       </section>
@@ -124,8 +124,8 @@ export default function Controls({
                     onClick={() => handleToolClick(t.id)}
                     className={`p-2 rounded-lg flex flex-col items-center justify-center gap-1 transition-all aspect-square
                         ${activeTool === t.id 
-                            ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500 dark:ring-blue-400 shadow-sm' 
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200'
+                            ? 'bg-blue-900/50 text-blue-400 ring-2 ring-blue-400 shadow-sm' 
+                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
                         }`}
                     title={t.label}
                 >
@@ -157,7 +157,7 @@ export default function Controls({
                     min="1" max="20" 
                     value={currentStrokeWidth} 
                     onChange={e => setStrokeWidth(Number(e.target.value))} 
-                    className="w-full accent-blue-500 h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                    className="w-full accent-blue-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
                 />
             </>
         )}

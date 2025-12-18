@@ -10,7 +10,7 @@ export default function Toolbar({ onExport, onToggleSidebar }: ToolbarProps) {
     <div className="flex justify-between items-center px-6 py-3 border-b border-[var(--border-color)] bg-[var(--panel-color)] shadow-sm z-20 sticky top-0">
       <div className="flex items-center gap-3">
         {onToggleSidebar && (
-            <button onClick={onToggleSidebar} className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <button onClick={onToggleSidebar} className="md:hidden p-2 rounded-lg hover:bg-slate-800 transition-colors">
                 <Menu size={24} className="text-[var(--text-color)]" />
             </button>
         )}

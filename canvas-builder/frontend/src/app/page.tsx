@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Controls, { Tool } from '@/components/Controls';
 import InteractiveCanvas, { CanvasElement } from '@/components/InteractiveCanvas';
 import Toolbar from '@/components/Toolbar';
@@ -14,39 +14,11 @@ export default function Home() {
 
   const [width, setWidth] = useState(800);
   const [height, setHeight] = useState(600);
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar state
   
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [currentColor, setCurrentColor] = useState('#000000');
   const [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
-
-  // Initialize Theme
-  useEffect(() => {
-    const storedTheme = localStorage.getItem('theme');
-    if (storedTheme === 'dark') {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-      setIsDarkMode(false);
-      document.documentElement.classList.remove('dark');
-      document.documentElement.setAttribute('data-theme', 'light');
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    const theme = newMode ? 'dark' : 'light';
-    localStorage.setItem('theme', theme);
-    document.documentElement.setAttribute('data-theme', theme);
-    if (newMode) {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
-    }
-  };
 
   const addToHistory = (newElements: CanvasElement[]) => {
     const newHistory = history.slice(0, historyIndex + 1);
