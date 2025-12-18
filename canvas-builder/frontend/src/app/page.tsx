@@ -88,7 +88,7 @@ export default function Home() {
 
   const handleExport = async () => {
     try {
-      const response = await fetch('http://localhost:5000/export/pdf', {
+      const response = await fetch('https://rocketium-lmjc.onrender.com/export/pdf', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
