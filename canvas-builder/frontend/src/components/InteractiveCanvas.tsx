@@ -1,7 +1,11 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
+import { Stage, Layer, Rect, Circle, Text, Line, Image as KonvaImage, Transformer } from 'react-konva';
+import useImage from 'use-image';
+import Konva from 'konva';
 
+// --- Types ---
 export type Point = { x: number; y: number };
 
 export type CanvasElement = 
@@ -15,517 +19,261 @@ type InteractiveCanvasProps = {
   width: number;
   height: number;
   elements: CanvasElement[];
-  activeTool: 'select' | 'rect' | 'circle' | 'text' | 'image' | 'pencil' | 'eraser';
+  activeTool: string;
   currentColor: string;
   currentStrokeWidth: number;
   onElementAdd: (el: CanvasElement) => void;
   onElementRemove?: (index: number) => void;
   onElementUpdate?: (index: number, el: CanvasElement) => void;
+  selectedIndex?: number | null;
+  onSelect?: (index: number | null) => void;
 };
 
-const HANDLE_SIZE = 8;
+// --- Sub-components ---
+
+const URLImage = ({ image, shapeProps }: any) => {
+  const [img] = useImage(image.src);
+  return <KonvaImage image={img} {...shapeProps} width={image.width} height={image.height} />;
+};
+
+const ShapeItem = ({ shape, isSelected, onSelect, onChange }: any) => {
+  const shapeProps = {
+    x: shape.x,
+    y: shape.y,
+    id: shape.id,
+    fill: shape.color,
+    draggable: isSelected, // Only draggable if selected
+    onClick: onSelect,
+    onTap: onSelect,
+    onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+      onChange({ ...shape, x: e.target.x(), y: e.target.y() });
+    },
+    onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {
+      const node = e.target;
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
+      
+      // Reset scale to 1 and update dimensions instead
+      node.scaleX(1);
+      node.scaleY(1);
+
+      if (shape.type === 'rect' || shape.type === 'image') {
+        onChange({
+          ...shape,
+          x: node.x(),
+          y: node.y(),
+          width: Math.max(5, node.width() * scaleX),
+          height: Math.max(5, node.height() * scaleY),
+        });
+      } else if (shape.type === 'circle') {
+        onChange({
+          ...shape,
+          x: node.x(),
+          y: node.y(),
+          radius: Math.max(5, (node as Konva.Circle).radius() * scaleX), // Use X scale
+        });
+      } else if (shape.type === 'text') {
+        onChange({
+          ...shape,
+          x: node.x(),
+          y: node.y(),
+          fontSize: Math.max(10, shape.fontSize * scaleY),
+        });
+      }
+    },
+  };
+
+  if (shape.type === 'rect') return <Rect {...shapeProps} width={shape.width} height={shape.height} />;
+  if (shape.type === 'circle') return <Circle {...shapeProps} radius={shape.radius} />;
+  if (shape.type === 'text') return <Text {...shapeProps} text={shape.text} fontSize={shape.fontSize} />;
+  if (shape.type === 'image') return <URLImage image={shape} shapeProps={shapeProps} />;
+  if (shape.type === 'path') {
+     const points = shape.points.flatMap((p: Point) => [p.x, p.y]);
+     return (
+        <Line 
+          {...shapeProps} 
+          points={points} 
+          stroke={shape.color} 
+          strokeWidth={shape.strokeWidth} 
+          lineCap="round" 
+          lineJoin="round" 
+        />
+     );
+  }
+  return null;
+};
+
+// --- Main Component ---
 
 export default function InteractiveCanvas({ 
-  width, 
-  height, 
-  elements, 
-  activeTool,
-  currentColor,
-  currentStrokeWidth,
-  onElementAdd,
-  onElementRemove,
-  onElementUpdate
+  width, height, elements, activeTool, currentColor, currentStrokeWidth, 
+  onElementAdd, onElementRemove, onElementUpdate,
+  selectedIndex, onSelect
 }: InteractiveCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  const [newShape, setNewShape] = useState<CanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState<string | null>(null); // 'nw', 'ne', 'sw', 'se'
-  
   const [startPos, setStartPos] = useState<Point | null>(null);
-  const [currentPos, setCurrentPos] = useState<Point | null>(null);
-  const [currentPath, setCurrentPath] = useState<Point[]>([]);
-  
-  // Inline Text Editing
-  const [editingText, setEditingText] = useState<{ x: number; y: number; value: string } | null>(null);
-  
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [initialElementState, setInitialElementState] = useState<CanvasElement | null>(null);
 
-  // Helper to check if point is on a handle
-  const getResizeHandle = (x: number, y: number, el: CanvasElement) => {
-    if (el.type === 'path' || el.type === 'text') return null; // Simple resize for now only rect/circle/image
-    const right = el.x + (el.type === 'circle' ? el.radius * 2 : (el as any).width || 0);
-    const bottom = el.y + (el.type === 'circle' ? el.radius * 2 : (el as any).height || 0);
-    // For circle, we treat x,y as top-left of bounding box for resize logic simplicity
-    
-    // Handles: nw, ne, sw, se
-    const handles = [
-        { id: 'nw', x: el.x, y: el.y },
-        { id: 'ne', x: right, y: el.y },
-        { id: 'sw', x: el.x, y: bottom },
-        { id: 'se', x: right, y: bottom }
-    ];
+  const transformerRef = useRef<Konva.Transformer>(null);
+  const stageRef = useRef<Konva.Stage>(null);
 
-    for (const h of handles) {
-        if (x >= h.x - HANDLE_SIZE && x <= h.x + HANDLE_SIZE && y >= h.y - HANDLE_SIZE && y <= h.y + HANDLE_SIZE) {
-            return h.id;
-        }
-    }
-    return null;
-  };
-
-  // Redraw canvas whenever dependencies change
+  // Update Transformer selection
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Clear and set background
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-
-    // Helper to draw an element
-    const drawElement = (el: CanvasElement) => {
-      if (el.type === 'rect') {
-        ctx.fillStyle = el.color;
-        ctx.fillRect(el.x, el.y, el.width, el.height);
-      } else if (el.type === 'circle') {
-        ctx.beginPath();
-        ctx.arc(el.x, el.y, el.radius, 0, Math.PI * 2);
-        ctx.fillStyle = el.color;
-        ctx.fill();
-      } else if (el.type === 'text') {
-        ctx.font = `${el.fontSize}px sans-serif`;
-        ctx.fillStyle = el.color;
-        ctx.fillText(el.text, el.x, el.y);
-      } else if (el.type === 'image') {
-        const img = new Image();
-        img.src = el.src;
-        if (img.complete) {
-            ctx.drawImage(img, el.x, el.y, el.width, el.height);
+    if (selectedIndex !== null && selectedIndex !== undefined && transformerRef.current && stageRef.current) {
+        const node = stageRef.current.findOne('#shape-' + selectedIndex); 
+        if (node) {
+             transformerRef.current.nodes([node]);
+             transformerRef.current.getLayer()?.batchDraw();
         } else {
-            img.onload = () => ctx.drawImage(img, el.x, el.y, el.width, el.height);
+             transformerRef.current.nodes([]);
         }
-      } else if (el.type === 'path') {
-        if (el.points.length < 2) return;
-        ctx.beginPath();
-        ctx.lineWidth = el.strokeWidth;
-        ctx.strokeStyle = el.color;
-        ctx.lineCap = 'round';
-        ctx.moveTo(el.points[0].x, el.points[0].y);
-        for (let i = 1; i < el.points.length; i++) {
-            ctx.lineTo(el.points[i].x, el.points[i].y);
-        }
-        ctx.stroke();
-      }
-    };
-
-    // Draw existing elements
-    elements.forEach(drawElement);
-
-    // Draw preview of current operation
-    if (isDrawing && startPos && currentPos) {
-      if (activeTool === 'rect') {
-        const w = currentPos.x - startPos.x;
-        const h = currentPos.y - startPos.y;
-        ctx.fillStyle = currentColor + '80'; // transparent preview
-        ctx.fillRect(startPos.x, startPos.y, w, h);
-        ctx.strokeStyle = currentColor;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(startPos.x, startPos.y, w, h);
-      } else if (activeTool === 'circle') {
-        const radius = Math.sqrt(Math.pow(currentPos.x - startPos.x, 2) + Math.pow(currentPos.y - startPos.y, 2));
-        ctx.beginPath();
-        ctx.arc(startPos.x, startPos.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = currentColor + '80';
-        ctx.fill();
-        ctx.strokeStyle = currentColor;
-        ctx.stroke();
-      }
+    } else {
+         transformerRef.current?.nodes([]);
     }
+  }, [selectedIndex, elements]);
 
-    // Draw current path being drawn
-    if (isDrawing && activeTool === 'pencil' && currentPath.length > 1) {
-       ctx.beginPath();
-       ctx.lineWidth = currentStrokeWidth;
-       ctx.strokeStyle = currentColor;
-       ctx.lineCap = 'round';
-       ctx.moveTo(currentPath[0].x, currentPath[0].y);
-       for (let i = 1; i < currentPath.length; i++) {
-           ctx.lineTo(currentPath[i].x, currentPath[i].y);
-       }
-       ctx.stroke();
-    }
+  const getPointerPos = () => stageRef.current?.getPointerPosition();
 
-    // Draw selection handles if selected
-    if (selectedIndex !== null && elements[selectedIndex]) {
-        const el = elements[selectedIndex];
-        // Don't draw handles for path for now (too complex)
-        if (el.type !== 'path') {
-            const x = el.x;
-            const y = el.y;
-            const w = el.type === 'circle' ? el.radius * 2 : (el as any).width || 0;
-            const h = el.type === 'circle' ? el.radius * 2 : (el as any).height || (el as any).fontSize || 0;
-            
-            // Draw Bounding Box
-            ctx.strokeStyle = '#2196f3';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x, y, w, h);
-
-            // Draw Handles
-            if (el.type !== 'text') { // Text resize logic is font-size based, different interaction
-                const right = x + w;
-                const bottom = y + h;
-                const handles = [
-                    { x: x, y: y }, { x: right, y: y },
-                    { x: x, y: bottom }, { x: right, y: bottom }
-                ];
-                ctx.fillStyle = '#2196f3';
-                handles.forEach(h => {
-                    ctx.fillRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE);
-                });
+  // Changed event type to 'any' to handle both MouseEvent and TouchEvent
+  const handleMouseDown = (e: Konva.KonvaEventObject<any>) => {
+    // Check if we clicked on an existing shape
+    const isStage = e.target === e.target.getStage();
+    if (!isStage) {
+        // If we clicked a shape, select it regardless of tool
+        // This prevents creating text on top of other text/shapes easily, which is good UX usually
+        const id = e.target.id();
+        if (id && id.startsWith('shape-')) {
+            const index = parseInt(id.split('-')[1]);
+            if (!isNaN(index)) {
+                onSelect?.(index);
+                return;
             }
         }
     }
 
-  }, [width, height, elements, isDrawing, startPos, currentPos, currentPath, activeTool, currentColor, currentStrokeWidth, selectedIndex]);
-
-  const getPos = (e: React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    const pos = getPos(e);
-
-    // 1. SELECT / MOVE / RESIZE LOGIC
     if (activeTool === 'select') {
-        // Check for resize handles first
-        if (selectedIndex !== null && elements[selectedIndex]) {
-            const handle = getResizeHandle(pos.x, pos.y, elements[selectedIndex]);
-            if (handle) {
-                setIsResizing(handle);
-                setStartPos(pos);
-                setInitialElementState({ ...elements[selectedIndex] });
-                return;
-            }
-        }
+      if (isStage) onSelect?.(null);
+      return;
+    }
 
-        // Check for object hit
-        // Iterate backwards
-        for (let i = elements.length - 1; i >= 0; i--) {
-            const el = elements[i];
-            let hit = false;
-            // Re-use hit logic (should extract to helper)
-            if (el.type === 'rect' || el.type === 'image') {
-                  const x = el.width < 0 ? el.x + el.width : el.x;
-                  const y = el.height < 0 ? el.y + el.height : el.y;
-                  const w = Math.abs(el.width);
-                  const h = Math.abs(el.height);
-                  hit = pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h;
-            } else if (el.type === 'circle') {
-                 // Simplified box hit for selection to make it easier or circle hit? Circle hit is fine.
-                 // Treat circle x,y as top-left for bounding box consistency? 
-                 // Previous code used x,y as center. Let's consistency check.
-                 // 'circle' adds x,y as top-left in handleMouseUp below? NO, it adds as START POS.
-                 // Wait, circle drawing in handleMouseUp:
-                 // x: startPos.x, y: startPos.y, radius: ...
-                 // ctx.arc(el.x, el.y, ...) -> so startPos IS CENTER.
-                 // But bounding box logic above assumes x,y is top-left? 
-                 // FIX: For circle, logic above used radius*2 for w/h. That implies x,y is top-left.
-                 // But drawing uses x,y as center. 
-                 // Let's standardise: x,y is CENTER for circle rendering.
-                 // So bounding box should be x-r, y-r.
-                 const dist = Math.sqrt(Math.pow(pos.x - el.x, 2) + Math.pow(pos.y - el.y, 2));
-                 hit = dist <= el.radius;
-            } else if (el.type === 'text') {
-                 hit = pos.x >= el.x && pos.x <= el.x + (el.fontSize * el.text.length * 0.6) && pos.y <= el.y && pos.y >= el.y - el.fontSize;
-            } else if (el.type === 'path') {
-                 // For now, simpler path hit
-                 // ... (existing logic)
-                 const canvas = canvasRef.current;
-                   const ctx = canvas?.getContext('2d');
-                   if (ctx) {
-                       ctx.beginPath();
-                       ctx.lineWidth = el.strokeWidth + 10;
-                       if (el.points.length > 0) {
-                           ctx.moveTo(el.points[0].x, el.points[0].y);
-                           for(let p of el.points) ctx.lineTo(p.x, p.y);
-                           hit = ctx.isPointInStroke(pos.x, pos.y);
-                       }
-                   }
-            }
+    const pos = getPointerPos();
+    if (!pos) return;
 
-            if (hit) {
-                setSelectedIndex(i);
-                setIsDragging(true);
-                setStartPos(pos);
-                setInitialElementState({ ...el });
-                return;
-            }
-        }
-        
-        // Clicked empty space
-        setSelectedIndex(null);
+    if (activeTool === 'text') {
+        setIsDrawing(false);
+        onElementAdd({
+            type: 'text',
+            x: pos.x,
+            y: pos.y,
+            text: 'Input Text Here',
+            fontSize: 24,
+            color: currentColor || '#000000'
+        });
+        // Auto-select the newly added element
+        onSelect?.(elements.length);
         return;
     }
 
-    // 2. ERASER LOGIC (Existing)
-    if (activeTool === 'eraser') {
-       if (onElementRemove) {
-          // Find topmost element under cursor (iterate backwards)
-          for (let i = elements.length - 1; i >= 0; i--) {
-              const el = elements[i];
-              let hit = false;
-              if (el.type === 'rect' || el.type === 'image') {
-                  // Normalize dimensions for hit detection (handle negative width/height)
-                  const x = el.width < 0 ? el.x + el.width : el.x;
-                  const y = el.height < 0 ? el.y + el.height : el.y;
-                  const w = Math.abs(el.width);
-                  const h = Math.abs(el.height);
-                  hit = pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h;
-              } else if (el.type === 'circle') {
-                  const dist = Math.sqrt(Math.pow(pos.x - el.x, 2) + Math.pow(pos.y - el.y, 2));
-                  hit = dist <= el.radius;
-              } else if (el.type === 'text') {
-                  // Rough approximation for text
-                  hit = pos.x >= el.x && pos.x <= el.x + (el.fontSize * el.text.length * 0.6) && pos.y <= el.y && pos.y >= el.y - el.fontSize;
-              } else if (el.type === 'path') {
-                  // Simple bounding box for path default, ideally use isPointInStroke
-                  // For now, let's use canvas API isPointInStroke
-                   const canvas = canvasRef.current;
-                   const ctx = canvas?.getContext('2d');
-                   if (ctx) {
-                       ctx.beginPath();
-                       ctx.lineWidth = el.strokeWidth + 5; // Easier hit area
-                       if (el.points.length > 0) {
-                           ctx.moveTo(el.points[0].x, el.points[0].y);
-                           for(let p of el.points) ctx.lineTo(p.x, p.y);
-                           hit = ctx.isPointInStroke(pos.x, pos.y);
-                       }
-                   }
-              }
-
-              if (hit) {
-                  onElementRemove(i);
-                  return; // Remove one at a time
-              }
-          }
-       }
+    if (activeTool === 'image') {
+       e.evt.preventDefault();
+       // Use timeout to avoid blocking main thread event
+       setTimeout(() => {
+           const url = prompt('Image URL', 'https://via.placeholder.com/150');
+           if (url) onElementAdd({ type: 'image', x: pos.x, y: pos.y, width: 150, height: 150, src: url });
+       }, 50);
        return;
     }
 
-    // 3. DRAWING LOGIC (Existing)
     setIsDrawing(true);
     setStartPos(pos);
-    setCurrentPos(pos);
-
-    if (activeTool === 'pencil') {
-        setCurrentPath([pos]);
-    } else if (activeTool === 'text') {
-        e.preventDefault(); // Prevent canvas from keeping focus
-        setEditingText({ x: pos.x, y: pos.y, value: '' });
-        setIsDrawing(false); 
-    } else if (activeTool === 'image') {
-        const url = prompt('Enter Image URL:', 'https://via.placeholder.com/150');
-        if (url) {
-             onElementAdd({
-               type: 'image',
-               x: pos.x,
-               y: pos.y,
-               width: 150,
-               height: 150,
-               src: url
-           });
-           setIsDrawing(false);
-        }
-    }
+    
+    // Init Shape
+    if (activeTool === 'rect') setNewShape({ type: 'rect', x: pos.x, y: pos.y, width: 0, height: 0, color: currentColor });
+    if (activeTool === 'circle') setNewShape({ type: 'circle', x: pos.x, y: pos.y, radius: 0, color: currentColor });
+    if (activeTool === 'pencil') setNewShape({ type: 'path', points: [pos], color: currentColor, strokeWidth: currentStrokeWidth });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const pos = getPos(e);
-    
-    // Set Cursor if hovering handles in select mode
-    if (activeTool === 'select' && !isDragging && !isResizing && selectedIndex !== null && elements[selectedIndex]) {
-        const handle = getResizeHandle(pos.x, pos.y, elements[selectedIndex]);
-        if (handle) {
-            if (canvasRef.current) canvasRef.current.style.cursor = handle === 'nw' || handle === 'se' ? 'nwse-resize' : 'nesw-resize';
-        } else {
-             if (canvasRef.current) canvasRef.current.style.cursor = 'default';
+  const handleMouseMove = () => {
+    if (!isDrawing || !startPos || !newShape) return;
+    const pos = getPointerPos();
+    if (!pos) return;
+
+    if (activeTool === 'rect') {
+        setNewShape({ ...newShape, width: pos.x - startPos.x, height: pos.y - startPos.y } as CanvasElement);
+    } else if (activeTool === 'circle') {
+        const radius = Math.sqrt(Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2));
+        setNewShape({ ...newShape, radius } as CanvasElement);
+    } else if (activeTool === 'pencil') {
+        if (newShape.type === 'path') {
+            setNewShape({ ...newShape, points: [...newShape.points, pos] });
         }
-    }
-
-    if (isDragging && selectedIndex !== null && startPos && initialElementState && onElementUpdate) {
-        const dx = pos.x - startPos.x;
-        const dy = pos.y - startPos.y;
-             if (activeTool !== 'pencil' && onElementUpdate) {
-                // Determine new state safely (exclude path for now as it uses different logic)
-                onElementUpdate(selectedIndex, { 
-                    ...initialElementState, 
-                    x: (initialElementState as any).x + dx, 
-                    y: (initialElementState as any).y + dy 
-                } as CanvasElement);
-             }
-             return;
-        }
-
-    if (isResizing && selectedIndex !== null && startPos && initialElementState && onElementUpdate) {
-        const dx = pos.x - startPos.x;
-        const dy = pos.y - startPos.y;
-        
-        // Force non-null casting effectively
-        const el = { ...initialElementState } as CanvasElement;
-        
-        if (el.type === 'rect' || el.type === 'image') {
-             let newW = el.width;
-             let newH = el.height;
-             let newX = el.x;
-             let newY = el.y;
-
-             if (isResizing === 'se') {
-                 newW += dx;
-                 newH += dy;
-             } else if (isResizing === 'sw') {
-                 newX += dx;
-                 newW -= dx;
-                 newH += dy;
-             } else if (isResizing === 'nw') {
-                 newX += dx;
-                 newY += dy;
-                 newW -= dx;
-                 newH -= dy;
-             } else if (isResizing === 'ne') {
-                 newY += dy;
-                 newW += dx;
-                 newH -= dy;
-             }
-             
-             onElementUpdate(selectedIndex, { ...el, width: newW, height: newH, x: newX, y: newY } as CanvasElement);
-        } else if (el.type === 'circle') {
-             const dr = dx; 
-             onElementUpdate(selectedIndex, { ...el, radius: el.radius + dr/2 } as CanvasElement);
-        }
-        return;
-    }
-
-    if (!isDrawing) return;
-    
-    setCurrentPos(pos);
-    
-    if (activeTool === 'pencil') {
-        setCurrentPath(prev => [...prev, pos]);
     }
   };
 
   const handleMouseUp = () => {
-    if (isDragging || isResizing) {
-        setIsDragging(false);
-        setIsResizing(null);
-        setStartPos(null);
-        setInitialElementState(null);
-        return;
+    if (isDrawing && newShape) {
+        // Validation check before add
+        const isValid = 
+             (newShape.type === 'rect' && (Math.abs(newShape.width) > 5)) ||
+             (newShape.type === 'circle' && newShape.radius > 5) ||
+             (newShape.type === 'path' && newShape.points.length > 2);
+        
+        if (isValid) onElementAdd(newShape);
     }
-
-    if (!isDrawing) return;
     setIsDrawing(false);
-    
-    if (activeTool === 'pencil') {
-        onElementAdd({
-            type: 'path',
-            points: currentPath,
-            color: currentColor,
-            strokeWidth: currentStrokeWidth
-        });
-        setCurrentPath([]);
-    } else if (activeTool === 'rect' && startPos && currentPos) {
-        onElementAdd({
-            type: 'rect',
-            x: startPos.x,
-            y: startPos.y,
-            width: currentPos.x - startPos.x,
-            height: currentPos.y - startPos.y,
-            color: currentColor
-        });
-    } else if (activeTool === 'circle' && startPos && currentPos) {
-        const radius = Math.sqrt(Math.pow(currentPos.x - startPos.x, 2) + Math.pow(currentPos.y - startPos.y, 2));
-        onElementAdd({
-            type: 'circle',
-            x: startPos.x,
-            y: startPos.y,
-            radius: radius,
-            color: currentColor
-        });
-    }
-    
-    setStartPos(null);
-    setCurrentPos(null);
+    setNewShape(null);
   };
 
   return (
-    <div className="flex justify-center items-center p-8 bg-[var(--bg-color)] overflow-auto cursor-crosshair">
-       <div style={{ position: 'relative', width, height }} className="shadow-lg border border-[var(--canvas-border)] bg-white">
-          <canvas
-            ref={canvasRef}
-            width={width}
-            height={height}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            className="block"
-            style={{ cursor: activeTool === 'select' ? 'default' : 'crosshair' }}
-          />
-          {editingText && (
-              <input
-                autoFocus
-                type="text"
-                value={editingText.value}
-                onChange={(e) => setEditingText({ ...editingText, value: e.target.value })}
-                onBlur={() => {
-                    if (editingText.value.trim()) {
-                        onElementAdd({
-                            type: 'text',
-                            x: editingText.x,
-                            y: editingText.y,
-                            text: editingText.value,
-                            fontSize: 24,
-                            color: currentColor
-                        });
-                    }
-                    setEditingText(null);
+    <div className="flex justify-center items-center p-8 bg-(--bg-color) overflow-auto">
+      <div 
+         className="shadow-lg border border-(--canvas-border) bg-white relative" 
+         style={{ width, height, zIndex: 0 }} 
+      >
+        <Stage
+          ref={stageRef}
+          width={width}
+          height={height}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onTouchStart={handleMouseDown}
+          onTouchMove={handleMouseMove}
+          onTouchEnd={handleMouseUp}
+          style={{ cursor: activeTool === 'select' ? 'default' : 'crosshair' }}
+        >
+          <Layer>
+            <Rect width={width} height={height} fill="white" listening={false} />
+            
+            {elements.map((el, i) => (
+              <ShapeItem
+                key={i}
+                shape={{ ...el, id: `shape-${i}` }}
+                isSelected={selectedIndex === i} // Just check index, tool logic handled in mouse events usually
+                onSelect={() => {
+                  if (activeTool === 'eraser' && onElementRemove) {
+                    onElementRemove(i);
+                  } else {
+                    onSelect?.(i);
+                  }
                 }}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                        e.currentTarget.blur();
-                    }
-                }}
-                style={{
-                    position: 'absolute',
-                    left: editingText.x,
-                    top: editingText.y,
-                    fontSize: '24px',
-                    color: currentColor,
-                    border: '1px dashed #333',
-                    background: 'rgba(255, 255, 255, 0.95)',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                    outline: 'none',
-                    minWidth: '100px',
-                    padding: '4px 8px',
-                    margin: 0,
-                    zIndex: 1000,
-                    lineHeight: 1,
-                    borderRadius: '4px'
-                }}
+                onChange={(newAttrs: CanvasElement) => onElementUpdate && onElementUpdate(i, newAttrs)}
               />
-          )}
-       </div>
+            ))}
+
+            {newShape && (
+               <ShapeItem shape={{...newShape, id: 'preview'}} isSelected={false} />
+            )}
+
+            <Transformer 
+                ref={transformerRef} 
+                boundBoxFunc={(oldBox, newBox) => newBox.width < 5 || newBox.height < 5 ? oldBox : newBox} 
+                rotateEnabled={false}
+            />
+          </Layer>
+        </Stage>
+      </div>
     </div>
   );
 }

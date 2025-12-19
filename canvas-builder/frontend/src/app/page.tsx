@@ -14,11 +14,13 @@ export default function Home() {
 
   const [width, setWidth] = useState(800);
   const [height, setHeight] = useState(600);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [currentColor, setCurrentColor] = useState('#000000');
   const [currentStrokeWidth, setCurrentStrokeWidth] = useState(2);
+
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const addToHistory = (newElements: CanvasElement[]) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -35,6 +37,7 @@ export default function Home() {
 
   const handleRemoveElement = (index: number) => {
     const newElements = elements.filter((_, i) => i !== index);
+    if (selectedIndex === index) setSelectedIndex(null);
     addToHistory(newElements);
   };
 
@@ -43,6 +46,7 @@ export default function Home() {
       const newIndex = historyIndex - 1;
       setHistoryIndex(newIndex);
       setElements(history[newIndex]);
+      setSelectedIndex(null);
     }
   };
 
@@ -51,11 +55,13 @@ export default function Home() {
       const newIndex = historyIndex + 1;
       setHistoryIndex(newIndex);
       setElements(history[newIndex]);
+      setSelectedIndex(null);
     }
   };
 
   const clearCanvas = () => {
     addToHistory([]);
+    setSelectedIndex(null);
   };
 
   const handleExport = async () => {
@@ -98,9 +104,9 @@ export default function Home() {
       />
       
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden relative">
-        <div className={`order-2 md:order-1 flex-shrink-0 border-t md:border-t-0 md:border-r border-[var(--border-color)] transition-all duration-300 absolute md:relative z-10 w-full md:w-auto h-1/2 md:h-auto bg-[var(--panel-color)] shadow-2xl md:shadow-none ${isSidebarOpen ? 'bottom-0' : '-bottom-full md:bottom-0'}`}> 
+        <div className={`order-2 md:order-1 shrink-0 border-t md:border-t-0 md:border-r border-(--border-color) transition-all duration-300 absolute md:relative z-10 w-full md:w-auto h-1/2 md:h-auto bg-(--panel-color) shadow-2xl md:shadow-none ${isSidebarOpen ? 'bottom-0' : '-bottom-full md:bottom-0'}`}> 
           <Controls
-            activeTool={activeTool}
+          activeTool={activeTool}
           setActiveTool={setActiveTool}
           width={width} 
           height={height} 
@@ -119,11 +125,9 @@ export default function Home() {
               const reader = new FileReader();
               reader.onload = (e) => {
                   const src = e.target?.result as string;
-                  // Add image element
                   const img = new Image();
                   img.src = src;
                   img.onload = () => {
-                      // Scale down if huge
                       let w = img.width;
                       let h = img.height;
                       if (w > 400) { h = (400/w)*h; w = 400; }
@@ -141,10 +145,18 @@ export default function Home() {
               };
               reader.readAsDataURL(file);
           }}
+          selectedElement={selectedIndex !== null ? elements[selectedIndex] : null}
+          onUpdateElement={(newEl) => {
+              if (selectedIndex !== null) {
+                  const newElements = [...elements];
+                  newElements[selectedIndex] = newEl;
+                  setElements(newElements);
+              }
+          }}
         />
         </div>
         
-        <main className="order-1 md:order-2 flex-1 overflow-auto bg-[var(--bg-color)] relative flex items-center justify-center p-4">
+        <main className="order-1 md:order-2 flex-1 overflow-auto bg-(--bg-color) relative flex items-center justify-center p-4">
             <InteractiveCanvas 
                 width={width} 
                 height={height} 
@@ -159,6 +171,8 @@ export default function Home() {
                     newElements[index] = newEl;
                     setElements(newElements);
                 }}
+                selectedIndex={selectedIndex}
+                onSelect={setSelectedIndex}
             />
         </main>
       </div>

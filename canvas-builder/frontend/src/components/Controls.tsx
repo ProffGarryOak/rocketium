@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { MousePointer2, Pencil, Eraser, Square, Circle, Type, ImageIcon, Undo2, Redo2 } from 'lucide-react';
+import { CanvasElement } from './InteractiveCanvas';
+
 export type Tool = 'select' | 'rect' | 'circle' | 'text' | 'image' | 'pencil' | 'eraser';
 
 type ControlsProps = {
@@ -21,6 +23,8 @@ type ControlsProps = {
   canUndo: boolean;
   canRedo: boolean;
   onImageUpload?: (file: File) => void;
+  selectedElement?: CanvasElement | null;
+  onUpdateElement?: (el: CanvasElement) => void;
 };
 
 export default function Controls({ 
@@ -31,7 +35,9 @@ export default function Controls({
     currentStrokeWidth, setStrokeWidth,
     onClear,
     onUndo, onRedo, canUndo, canRedo,
-    onImageUpload
+    onImageUpload,
+    selectedElement,
+    onUpdateElement
 }: ControlsProps) {
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -58,22 +64,8 @@ export default function Controls({
       setActiveTool('select');
   };
 
-// ... (inside component)
-
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileChange} 
-        accept="image/jpeg, image/jpg" 
-        className="hidden" 
-      />
-
-
-
-// ... (inside component)
-
-  const inputClass = "w-full p-2 mb-2 border rounded text-sm bg-slate-800 border-slate-600 text-[var(--text-color)] focus:ring-2 focus:ring-blue-500 outline-none transition-colors";
-  const labelClass = "block text-xs font-semibold mb-1 text-[var(--text-color)] uppercase tracking-wide opacity-70";
+  const inputClass = "w-full p-2 mb-2 border rounded text-sm bg-slate-800 border-slate-600 text-(--text-color) focus:ring-2 focus:ring-blue-500 outline-none transition-colors";
+  const labelClass = "block text-xs font-semibold mb-1 text-(--text-color) uppercase tracking-wide opacity-70";
   
   const tools: { id: Tool; label: string; icon: React.ReactNode }[] = [
     { id: 'select', label: 'Select', icon: <MousePointer2 size={20} /> },
@@ -86,11 +78,11 @@ export default function Controls({
   ];
 
   return (
-    <div className="w-full md:w-72 p-4 border-t md:border-t-0 md:border-r border-[var(--border-color)] bg-[var(--panel-color)] flex flex-col gap-6 h-full md:h-screen overflow-y-auto shadow-xl z-30">
+    <div className="w-full md:w-72 p-4 border-t md:border-t-0 md:border-r border-(--border-color) bg-(--panel-color) flex flex-col gap-6 h-full md:h-screen overflow-y-auto shadow-xl z-30">
       
       {/* Config */}
       <section>
-        <h2 className="font-bold mb-3 text-xs uppercase tracking-wider text-[var(--text-muted)]">Canvas Size</h2>
+        <h2 className="font-bold mb-3 text-xs uppercase tracking-wider text-(--text-muted)">Canvas Size</h2>
         <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
                 <label className={labelClass}>Width</label>
@@ -102,10 +94,10 @@ export default function Controls({
             </div>
         </div>
                <div className="flex gap-2 mb-3">
-            <button onClick={onUndo} disabled={!canUndo} className="flex-1 flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-[var(--text-color)]" title="Undo">
+            <button onClick={onUndo} disabled={!canUndo} className="flex-1 flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-(--text-color)" title="Undo">
                 <Undo2 size={16} /> <span className="hidden sm:inline">Undo</span>
             </button>
-            <button onClick={onRedo} disabled={!canRedo} className="flex-1 flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-[var(--text-color)]" title="Redo">
+            <button onClick={onRedo} disabled={!canRedo} className="flex-1 flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 p-2 rounded-lg disabled:opacity-50 text-sm font-medium transition-colors text-(--text-color)" title="Redo">
                 <span className="hidden sm:inline">Redo</span> <Redo2 size={16} />
             </button>
         </div>
@@ -116,7 +108,7 @@ export default function Controls({
 
       {/* Tools */}
       <section>
-        <h2 className="font-bold mb-3 text-xs uppercase tracking-wider text-[var(--text-muted)]">Tools</h2>
+        <h2 className="font-bold mb-3 text-xs uppercase tracking-wider text-(--text-muted)">Tools</h2>
         <div className="grid grid-cols-4 gap-2">
             {tools.map(t => (
                 <button 
@@ -137,10 +129,25 @@ export default function Controls({
 
       {/* Properties */}
       <section>
-        <h2 className="font-bold mb-3 text-xs uppercase tracking-wider text-[var(--text-muted)]">Properties</h2>
+        <h2 className="font-bold mb-3 text-xs uppercase tracking-wider text-(--text-muted)">Properties</h2>
+        
+        {/* Text Selection Input */}
+        {selectedElement?.type === 'text' && onUpdateElement && (
+            <div className="mb-4 animate-in fade-in zoom-in duration-200">
+                <label className={labelClass}>Text Content</label>
+                <textarea 
+                    value={selectedElement.text}
+                    onChange={(e) => onUpdateElement({...selectedElement, text: e.target.value})}
+                    className={`${inputClass} min-h-[80px] resize-none border-blue-500`}
+                    placeholder="Type text here..."
+                    autoFocus
+                />
+            </div>
+        )}
+
         <label className={labelClass}>Color</label>
         <div className="flex gap-2 items-center mb-4">
-            <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-[var(--border-color)] shadow-sm">
+            <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-(--border-color) shadow-sm">
                 <input type="color" value={currentColor} onChange={e => setColor(e.target.value)} className="absolute -top-2 -left-2 w-16 h-16 p-0 border-0 cursor-pointer" />
             </div>
             <input type="text" value={currentColor} onChange={e => setColor(e.target.value)} className={`${inputClass} font-mono`} />
@@ -150,7 +157,7 @@ export default function Controls({
             <>
                 <div className="flex justify-between items-center mb-1">
                     <label className={labelClass}>Stroke Width</label>
-                    <span className="text-xs font-mono text-[var(--text-muted)]">{currentStrokeWidth}px</span>
+                    <span className="text-xs font-mono text-(--text-muted)">{currentStrokeWidth}px</span>
                 </div>
                 <input 
                     type="range" 
@@ -163,7 +170,7 @@ export default function Controls({
         )}
       </section>
       
-      <div className="mt-auto pt-6 text-[10px] text-center text-[var(--text-muted)] border-t border-[var(--border-color)]">
+      <div className="mt-auto pt-6 text-[10px] text-center text-(--text-muted) border-t border-(--border-color)">
         Select tool & drag on canvas
       </div>
       <input 
